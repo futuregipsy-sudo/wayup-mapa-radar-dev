@@ -5,11 +5,11 @@ type Audit = { website: string; source: string; scores: Record<string, number | 
 function sendToAI(prompt: string) {
   window.dispatchEvent(new CustomEvent("wayapp:radar-analyze", { detail: { prompt: prompt.slice(0, 1950) } }));
 }
-export function WayAppMap({ mode = "map" }: { mode?: "all" | "map" | "radar" }) {
+export function WayAppMap({ mode = "map", initialWebsite = "" }: { mode?: "all" | "map" | "radar"; initialWebsite?: string }) {
   const [query, setQuery] = useState("");
   const [places, setPlaces] = useState<Place[]>([]);
   const [selected, setSelected] = useState<Place | null>(null);
-  const [website, setWebsite] = useState("");
+  const [website, setWebsite] = useState(initialWebsite);
   const [audit, setAudit] = useState<Audit | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -55,7 +55,7 @@ export function WayAppMap({ mode = "map" }: { mode?: "all" | "map" | "radar" }) 
         {selected.mapsUrl && <a href={selected.mapsUrl} target="_blank" rel="noopener noreferrer">Abrir en Google Maps ↗</a>}
         {selected.website && <p><a href={selected.website} target="_blank" rel="noopener noreferrer">Visitar web ↗</a></p>}
         <button type="button" style={buttonStyle} onClick={() => sendToAI("Analiza las oportunidades de SEO local de este negocio según su ficha de Google Places. Nombre: " + selected.name + ". Dirección: " + selected.address + ". Categoría: " + selected.type + ". Web: " + (selected.website || "no disponible") + ". Valoración: " + (selected.rating ?? "no disponible") + ". No inventes una auditoría web ni métricas que no consten en estos datos.")}>Consultar oportunidades con WAY.APP</button>
-        {selected.website && <button type="button" style={{ ...buttonStyle, marginLeft: 6, background: "#172653" }} onClick={() => { setWebsite(selected.website!); document.getElementById("wayapp-seo-url")?.focus(); }}>Preparar auditoría web</button>}
+        {selected.website && <button type="button" style={{ ...buttonStyle, marginLeft: 6, background: "#172653" }} onClick={() => window.dispatchEvent(new CustomEvent("wayapp:open-seo-audit", { detail: { website: selected.website } }))}>Preparar auditoría web</button>}
       </div>}
     </> : null}
     {(mode === "radar" || mode === "all") && <>
