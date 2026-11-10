@@ -70,6 +70,15 @@ export function WayAppChat({ onClose, onExpand, expanded = false }: ChatProps) {
   const transcriptRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const onRadarAnalyze = (event: Event) => {
+      const prompt = (event as CustomEvent<{ prompt?: string }>).detail?.prompt;
+      if (typeof prompt === "string" && prompt.length <= 2000) setValue(prompt);
+    };
+    window.addEventListener("wayapp:radar-analyze", onRadarAnalyze);
+    return () => window.removeEventListener("wayapp:radar-analyze", onRadarAnalyze);
+  }, []);
+
+  useEffect(() => {
     const el = transcriptRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages, busy]);
