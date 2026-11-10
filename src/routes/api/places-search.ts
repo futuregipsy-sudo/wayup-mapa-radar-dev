@@ -1,9 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getEnv } from "@/server/wayapp/env";
+import { guardGoogleApi } from "@/server/wayapp/google-api-guard";
 import { json } from "@/server/wayapp/http";
 
 export const Route = createFileRoute("/api/places-search")({
   server: { handlers: { POST: async ({ request }) => {
+    const guard = await guardGoogleApi(request, "places");
+    if (guard) return guard;
     const key = getEnv("GOOGLE_MAPS_API_KEY");
     if (!key) return json({ error: "Google Maps no está configurado en el servidor." }, 503);
     const body = await request.json().catch(() => null) as { query?: unknown } | null;
