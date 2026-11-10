@@ -78,6 +78,9 @@ export function WayAppChat({ onClose, onExpand, expanded = false }: ChatProps) {
   const [pendingRadarPrompt, setPendingRadarPrompt] = useState<string | null>(null);
   const [showPricingLink, setShowPricingLink] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [designPreview, setDesignPreview] = useState<string | null>(null);
+  const [designError, setDesignError] = useState("");
+  const [generatingDesign, setGeneratingDesign] = useState(false);
   const transcriptRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -113,6 +116,42 @@ export function WayAppChat({ onClose, onExpand, expanded = false }: ChatProps) {
     if (!text || busy) return;
     setShowAuditOffer(false);
     setShowPricingLink(asksAboutPricing(text));
+
+    // A confirmed visual choice is an action, not another question to Groq.
+    const lastAssistant = [...messages].reverse().find(m => m.role === "assistant")?.text ?? "";
+    const visualContext = messages.some(m => /(?:logotipo|logo|diseñ|marca|cartel|banner|ilustraci[oó]n|imagen|branding)/i.test(m.text));
+    const confirmation = /^(?:(?:la |el |opci[oó]n )?0?[123]|s[ií](?:,.*)?|quiero verl[oa]|adelante|gen[eé]ral[oa]|al rev[eé]s|m[aá]s .+)\s*[.!]?$/i.test(text);
+    const awaitingChoice = /(?:¿cu[aá]l|¿quieres ver|¿te gustar[ií]a visualizar|opci[oó]n 0?[123]|0[123]\s*[·.:])/i.test(lastAssistant);
+    if (visualContext && confirmation && awaitingChoice) {
+      setMessages(m => [...m, { role: "user", text }]);
+      setValue("");
+      setDesignError("");
+      setDesignPreview(null);
+      setGeneratingDesign(true);
+      setBusy(true);
+      try {
+        const allText = messages.map(m => m.text).join("\n");
+        const named = allText.match(/(?:Marca:|para |logotipo de |logo de )\s*([\p{L}\p{N}][\p{L}\p{N} .&-]{1,55})/iu);
+        const name = (named?.[1] ?? "Proyecto creativo").split(/[\n.,:]/)[0]?.trim() || "Proyecto creativo";
+        const sector = allText.match(/Sector:\s*([^\n]+)/i)?.[1]?.slice(0, 120) || "Diseño gráfico e identidad visual";
+        const choice = text.match(/[123]/)?.[0] ?? lastAssistant.match(/opci[oó]n\s*0?([123])/i)?.[1] ?? "1";
+        const concept = choice === "2" ? "monogram" : choice === "3" ? "energy" : "symbol";
+        const response = await fetch("/api/branding/preview", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, sector, concept, style: lastAssistant.slice(0, 120), colors: allText.match(/(?:Colores:|paleta:)\s*([^\n]+)/i)?.[1]?.slice(0, 120) || "" }),
+        });
+        const result = await response.json() as { preview?: string; error?: string };
+        if (!response.ok || !result.preview) throw new Error(result.error || "No se pudo generar la imagen.");
+        setDesignPreview(result.preview);
+        setMessages(m => [...m, { role: "assistant", text: "Aquí tienes tu **vista previa visual**. Es un concepto preliminar, no un logotipo vectorial final." }]);
+      } catch (error) {
+        setDesignError(error instanceof Error ? error.message : "No se pudo generar la imagen.");
+      } finally {
+        setGeneratingDesign(false);
+        setBusy(false);
+      }
+      return;
+    }
 
     const history = [
       ...messages.slice(-15).map(({ role, text: content }) => ({ role, content })),
@@ -208,6 +247,8 @@ export function WayAppChat({ onClose, onExpand, expanded = false }: ChatProps) {
                 setConversationId(null);
                 setShowAuditOffer(false);
                 setShowPricingLink(false);
+                setDesignPreview(null);
+                setDesignError("");
               }}
             >
               <RotateCcw size={16} />
@@ -268,6 +309,9 @@ export function WayAppChat({ onClose, onExpand, expanded = false }: ChatProps) {
                 <div className="wa-bubble">{m.role === "assistant" ? renderAssistantText(m.text) : m.text}</div>
               </div>
             ))}
+            {generatingDesign && <p role="status" style={{ padding: 12, color: "#172653" }}>🎨 Generando tu vista previa…</p>}
+            {designError && <p role="alert" style={{ padding: 12, color: "#b42318" }}>{designError}</p>}
+            {designPreview && <div style={{ padding: 12 }}><img src={designPreview} alt="Vista previa de diseño generada por WAY.APP" style={{ width: "100%", maxWidth: 460, borderRadius: 14 }} /><small style={{ display: "block", marginTop: 6 }}>Vista previa conceptual gratuita. No es un archivo vectorial final.</small></div>}
             {showPricingLink && !busy && !showAuditOffer && (
               <a className="wa-pricing-link" href="/servicios-y-tarifas">
                 Ver servicios y tarifas <ArrowRight size={16} aria-hidden="true" />
