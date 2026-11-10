@@ -11,6 +11,7 @@ async function imageCredentials(): Promise<{ account?: string; apiToken?: string
   const apiToken = getEnv("CLOUDFLARE_AI_API_TOKEN");
   if (account && apiToken) return { account, apiToken };
   try {
+    // @ts-ignore Cloudflare runtime virtual module is resolved by Workers, not Node typecheck.
     const { env } = await import("cloudflare:workers");
     const bindings = env as unknown as Record<string, unknown>;
     const read = (name: string): string | undefined => {
