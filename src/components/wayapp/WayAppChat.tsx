@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 
 import logo from "@/assets/wayapp-logo.png";
 import { WayAppMap } from "./WayAppMap";
+import { BrandingStudio } from "./BrandingStudio";
 
 type Msg = { role: "user" | "assistant"; text: string };
 
@@ -67,7 +68,7 @@ export function WayAppChat({ onClose, onExpand, expanded = false }: ChatProps) {
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [showAuditOffer, setShowAuditOffer] = useState(false);
-  const [toolPanel, setToolPanel] = useState<"map" | "radar" | null>(null);
+  const [toolPanel, setToolPanel] = useState<"map" | "radar" | "branding" | null>(null);
   const [auditWebsite, setAuditWebsite] = useState("");
   const [pendingRadarPrompt, setPendingRadarPrompt] = useState<string | null>(null);
   const [showPricingLink, setShowPricingLink] = useState(false);
@@ -384,16 +385,17 @@ export function WayAppChat({ onClose, onExpand, expanded = false }: ChatProps) {
 
       <div style={{ display: "flex", gap: 8, padding: "8px 12px", borderTop: "1px solid #e9e5e0" }}>
         <button type="button" onClick={() => setToolPanel("radar")} style={{ flex: 1, minWidth: 0, padding: "8px 10px", borderRadius: 12, border: "1px solid #dfe4ff", background: "#f7f8ff", color: "#18285c", fontSize: 12, fontWeight: 650, cursor: "pointer" }}>⌕ Radar SEO</button>
+        <button type="button" onClick={() => setToolPanel("branding")} style={{ flex: 1.2, minWidth: 0, padding: "8px 5px", borderRadius: 12, border: "1px solid #ccd5ff", background: "#eef1ff", color: "#18285c", fontSize: 11, fontWeight: 750, cursor: "pointer" }}>✦ Diseña tu marca</button>
         <button type="button" onClick={() => setToolPanel("map")} style={{ flex: 1, minWidth: 0, padding: "8px 10px", borderRadius: 12, border: "1px solid #e7e2d9", background: "#fff", color: "#18285c", fontSize: 12, fontWeight: 650, cursor: "pointer" }}>⌖ Buscar negocio</button>
       </div>
       {toolPanel && typeof document !== "undefined" && createPortal(
         <div role="presentation" style={{ position: "fixed", inset: 0, zIndex: 2147483000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, background: "rgba(13, 19, 42, .66)" }}>
           <section role="dialog" aria-modal="true" aria-labelledby="wayapp-tool-title" style={{ width: "min(100%, 560px)", maxHeight: "min(85dvh, 760px)", display: "flex", flexDirection: "column", background: "#fff", color: "#172653", borderRadius: 20, boxShadow: "0 24px 70px rgba(0,0,0,.3)", overflow: "hidden" }}>
             <header style={{ padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid #e9e5e0" }}>
-              <div><strong id="wayapp-tool-title" style={{ fontSize: 17 }}>{toolPanel === "radar" ? "Smart Radar SEO" : "Buscar mi negocio"}</strong><small style={{ display: "block", color: "#737c90", marginTop: 3 }}>{toolPanel === "radar" ? "Auditoría técnica · Google PageSpeed" : "Búsqueda de empresas · Google Places"}</small></div>
+              <div><strong id="wayapp-tool-title" style={{ fontSize: 17 }}>{toolPanel === "radar" ? "Smart Radar SEO" : toolPanel === "branding" ? "Diseña tu marca" : "Buscar mi negocio"}</strong><small style={{ display: "block", color: "#737c90", marginTop: 3 }}>{toolPanel === "radar" ? "Auditoría técnica · Google PageSpeed" : toolPanel === "branding" ? "Branding Studio · Briefing creativo con IA" : "Búsqueda de empresas · Google Places"}</small></div>
               <button type="button" onClick={() => setToolPanel(null)} aria-label="Cerrar ventana y volver al chat" style={{ border: 0, background: "#f0f2f7", borderRadius: 10, padding: 8, cursor: "pointer", color: "#172653" }}><X size={19} /></button>
             </header>
-            <div style={{ padding: "8px 20px 20px", overflowY: "auto", minHeight: 0 }}><WayAppMap mode={toolPanel} initialWebsite={auditWebsite} /></div>
+            <div style={{ padding: "8px 20px 20px", overflowY: "auto", minHeight: 0 }}>{toolPanel === "branding" ? <BrandingStudio onBrief={(prompt) => { setToolPanel(null); setPendingRadarPrompt(prompt); }} /> : <WayAppMap mode={toolPanel} initialWebsite={auditWebsite} />}</div>
             <footer style={{ padding: "10px 20px", borderTop: "1px solid #e9e5e0", color: "#737c90", fontSize: 12 }}>WAY.APP · Tu conversación permanece abierta.</footer>
           </section>
         </div>, document.body
