@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 /** Pilot map: OpenStreetMap tiles via iframe; geocoding is explicit, never on each keystroke. */
-export function WayAppMap() {
+export function WayAppMap({ mode = "all" }: { mode?: "all" | "map" | "radar" }) {
   const [query, setQuery] = useState("");
   const [place, setPlace] = useState<{ lat: number; lon: number; label: string } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -64,8 +64,8 @@ export function WayAppMap() {
   const bbox = [lon - delta, lat - delta, lon + delta, lat + delta].join(",");
   const mapUrl = "https://www.openstreetmap.org/export/embed.html?bbox=" + encodeURIComponent(bbox) + "&layer=mapnik&marker=" + encodeURIComponent(lat + "," + lon);
   return (
-    <section id="wayapp-mapa" aria-label="Mapa WAY.APP" style={{ padding: "48px 20px", maxWidth: 1100, margin: "0 auto" }}>
-      <h2 style={{ fontSize: "clamp(1.5rem, 3vw, 2.5rem)", fontWeight: 700, marginBottom: 12 }}>Explora el mapa con WAY.APP</h2>
+    <section id="wayapp-mapa" aria-label="Mapa WAY.APP" style={{ padding: mode === "all" ? "48px 20px" : "12px 0", maxWidth: 1100, margin: "0 auto" }}>
+      {mode === "all" && <h2 style={{ fontSize: "clamp(1.5rem, 3vw, 2.5rem)", fontWeight: 700, marginBottom: 12 }}>Explora el mapa con WAY.APP</h2>}
       <p style={{ marginBottom: 20 }}>Busca una ciudad, dirección o negocio para localizarlo en el mapa.</p>
       <form onSubmit={search} style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
         <input aria-label="Buscar lugar en el mapa" value={query} onChange={e => setQuery(e.target.value)} placeholder="Ej.: Salamanca, Plaza Mayor" minLength={3} maxLength={160} required style={{ flex: "1 1 250px", padding: 12, borderRadius: 8, border: "1px solid #999", color: "#111", background: "#fff" }} />
@@ -73,10 +73,10 @@ export function WayAppMap() {
       </form>
       {error && <p role="alert" style={{ marginBottom: 12 }}>{error}</p>}
       {place && <p aria-live="polite" style={{ marginBottom: 12 }}>Ubicación: {place.label}</p>}
-      <iframe title="Mapa interactivo OpenStreetMap" src={mapUrl} loading="lazy" referrerPolicy="no-referrer" style={{ width: "100%", height: 440, border: "1px solid #888", borderRadius: 12 }} />
+      <iframe title="Mapa interactivo OpenStreetMap" src={mapUrl} loading="lazy" referrerPolicy="no-referrer" style={{ width: "100%", height: mode === "all" ? 440 : 240, border: "1px solid #888", borderRadius: 12 }} />
       <p style={{ marginTop: 8, fontSize: 12 }}>© Colaboradores de OpenStreetMap · Búsqueda mediante Nominatim</p>
 
-      <section aria-label="Radar de negocios" style={{ marginTop: 24 }}>
+      {mode !== "map" && <section aria-label="Radar de negocios" style={{ marginTop: 24 }}>
         <h3 style={{ fontSize: 24, fontWeight: 700 }}>Smart Radar · Piloto</h3>
         <p>Negocios registrados en OpenStreetMap a 1 km del centro del mapa.</p>
         <button type="button" disabled={radarBusy || !place} onClick={scanRadar} style={{ padding: 12, background: "#2349cc", color: "white", borderRadius: 8 }}>{radarBusy ? "Escaneando…" : "Escanear negocios"}</button>
@@ -86,7 +86,7 @@ export function WayAppMap() {
         <ul style={{ maxHeight: 320, overflowY: "auto" }}>
           {radar.map(item => <li key={item.id}><strong>{item.name}</strong> · {item.type} · <a href={"https://www.openstreetmap.org/" + item.id} target="_blank" rel="noopener noreferrer">Ver en mapa</a></li>)}
         </ul>
-      </section>
+      </section>}
     </section>
   );
 }
