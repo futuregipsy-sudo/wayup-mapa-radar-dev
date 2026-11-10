@@ -6,7 +6,7 @@ const MODEL = "@cf/black-forest-labs/flux-1-schnell";
 const MAX_BYTES = 3000;
 // Read Cloudflare Worker bindings when process.env is unavailable.
 // Keep this scoped to branding to avoid affecting working chat/auth routes.
-async function imageCredentials(): Promise<{ account?: string; apiToken?: string }> {
+async function imageCredentials(): Promise<{ account: string | undefined; apiToken: string | undefined }> {
   const account = getEnv("CLOUDFLARE_ACCOUNT_ID");
   const apiToken = getEnv("CLOUDFLARE_AI_API_TOKEN");
   if (account && apiToken) return { account, apiToken };
