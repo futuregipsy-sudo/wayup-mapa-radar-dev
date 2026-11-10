@@ -73,7 +73,7 @@ export function WayAppMap({ mode = "map", initialWebsite = "" }: { mode?: "all" 
         <strong>Resultados reales · Lighthouse móvil</strong>
         {Object.entries(audit.scores).map(([name, score]) => <p key={name} style={{ margin: "4px 0" }}>{name}: <strong>{score ?? "Sin datos"}/100</strong></p>)}
         <p>{audit.issues.length} oportunidades técnicas detectadas.</p>
-        <button type="button" style={buttonStyle} onClick={() => sendToAI("Realiza un diagnóstico SEO técnico preliminar de " + audit.website + " usando SOLO estos resultados reales de Google PageSpeed Insights móvil. Puntuaciones: " + JSON.stringify(audit.scores) + ". Incidencias: " + audit.issues.slice(0, 6).map(x => x.title).join("; ") + ". Prioriza tres mejoras, explica límites de Lighthouse y sugiere cuándo conviene contratar servicios de WAY UP. No afirmes haber rastreado toda la web.")}>Interpretar resultados con Groq</button>
+        <button type="button" style={buttonStyle} onClick={() => sendToAI("Auditoría Lighthouse móvil de " + audit.website + ". Puntuaciones: " + JSON.stringify(audit.scores) + ". Problemas principales: " + audit.issues.slice(0, 4).map(x => (x.title ?? "").slice(0, 65)).join("; ") + ". Explica tres mejoras prioritarias en español, sin inventar datos. El SEO Lighthouse no mide posicionamiento.")}>Interpretar resultados con Groq</button>
       </div>}
     </>}
     {error && <p role="alert" style={{ color: "#b42318", marginTop: 8 }}>{error}</p>}
