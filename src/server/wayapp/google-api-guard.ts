@@ -16,11 +16,14 @@ export async function guardGoogleApi(request: Request, kind: "places" | "pagespe
   const key = `wayapp:google:${kind}:${ip}`;
   const script = "local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('EXPIRE',KEYS[1],600); end; return n";
   try {
-    const res = await fetch(url + "/pipeline", { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify([["EVAL", script, "1", key]]), signal: AbortSignal.timeout(2500), cache: "no-store" });
+    const res = await fetch(url + "/pipeline", { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify([["EVAL", script, "1", key]]), signal: AbortSignal.timeout(6000), cache: "no-store" });
     if (!res.ok) throw new Error("Redis unavailable");
     const data = await res.json() as Array<{ result?: unknown; error?: string }>;
     if (data[0]?.error || !Number.isFinite(Number(data[0]?.result))) throw new Error("Redis invalid response");
     if (Number(data[0].result) > limit) return Response.json({ error: "Has alcanzado el límite temporal de consultas. Inténtalo más tarde." }, { status: 429, headers: { "Retry-After": "600" } });
     return null;
-  } catch { return Response.json({ error: "Protección de cuota temporalmente no disponible." }, { status: 503 }); }
+  } catch (error) {
+    console.warn("WAYAPP_GOOGLE_QUOTA_ERROR", { kind, category: error instanceof Error && error.name === "TimeoutError" ? "timeout" : "redis_unavailable" });
+    return Response.json({ error: "No se pudo comprobar el límite de consultas. Inténtalo de nuevo en unos segundos.", code: "GOOGLE_QUOTA_UNAVAILABLE" }, { status: 503, headers: { "Retry-After": "5" } });
+  }
 }
