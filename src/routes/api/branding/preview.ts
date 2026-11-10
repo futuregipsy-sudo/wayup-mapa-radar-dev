@@ -5,23 +5,48 @@ import { json } from "@/server/wayapp/http";
 const MODEL = "@cf/black-forest-labs/flux-1-schnell";
 const MAX_BYTES = 3000;
 function validText(x: unknown, max: number): x is string { return typeof x === "string" && x.trim().length > 0 && x.length <= max; }
-async function quota(request: Request): Promise<Response | null> {
+type QuotaLease = { key: string; lockKey: string; owner: string; url: string; token: string };
+async function redis(lease: QuotaLease, command: (string | number)[]): Promise<unknown> {
+  const response = await fetch(lease.url + "/pipeline", {
+    method: "POST", headers: { Authorization: "Bearer " + lease.token, "Content-Type": "application/json" },
+    body: JSON.stringify([command]), signal: AbortSignal.timeout(6000)
+  });
+  if (!response.ok) throw new Error("Redis HTTP " + response.status);
+  const data = await response.json() as Array<{ result?: unknown; error?: string }>;
+  if (!Array.isArray(data) || data.length !== 1 || data[0]?.error) throw new Error("Redis command failed");
+  return data[0]?.result;
+}
+async function reserveQuota(request: Request): Promise<{ lease?: QuotaLease; error?: Response }> {
   const url = getEnv("KV_REST_API_URL"), token = getEnv("KV_REST_API_TOKEN");
-  if (!url || !token) return json({ error: "Protección de generación no configurada." }, 503);
+  if (!url || !token) return { error: json({ error: "Protección de generación no configurada." }, 503) };
   const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(ip));
-  const key = "wayapp:branding:preview:" + Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2,"0")).join("").slice(0,32);
+  const hash = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2,"0")).join("").slice(0,32);
+  // v2 avoids penalizing visitors whose failed generations were counted by the old code.
+  const key = "wayapp:branding:preview:v2:" + hash;
+  const lease: QuotaLease = { key, lockKey: key + ":lock", owner: crypto.randomUUID(), url: url.replace(/\\/$/,""), token };
   try {
-    const response = await fetch(url.replace(/\/$/,"") + "/pipeline", {
-      method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
-      body: JSON.stringify([["INCR",key],["EXPIRE",key,86400,"NX"]]), signal: AbortSignal.timeout(6000)
-    });
-    if (!response.ok) return json({ error: "No se pudo verificar el límite de generación." }, 503);
-    const data = await response.json() as Array<{ result?: number; error?: string }>;
-    if (!Array.isArray(data) || data.some(x=>x.error) || typeof data[0]?.result !== "number") return json({ error: "Protección de generación temporalmente no disponible." }, 503);
-    if (data[0].result > 1) return json({ error: "Ya has utilizado tu vista previa gratuita de hoy. Vuelve mañana." }, 429);
-    return null;
-  } catch { return json({ error: "Protección de generación temporalmente no disponible." }, 503); }
+    if (await redis(lease, ["EXISTS", key]) === 1) return { error: json({ error: "Ya has utilizado tu vista previa gratuita de hoy. Vuelve mañana." }, 429) };
+    const acquired = await redis(lease, ["SET", lease.lockKey, lease.owner, "NX", "EX", 120]);
+    if (acquired !== "OK") return { error: json({ error: "Ya hay una imagen en proceso. Espera un momento." }, 429) };
+    if (await redis(lease, ["EXISTS", key]) === 1) {
+      await releaseQuota(lease);
+      return { error: json({ error: "Ya has utilizado tu vista previa gratuita de hoy. Vuelve mañana." }, 429) };
+    }
+    return { lease };
+  } catch {
+    return { error: json({ error: "Protección de generación temporalmente no disponible." }, 503) };
+  }
+}
+async function releaseQuota(lease: QuotaLease): Promise<void> {
+  // Do not delete a different request's lock after the TTL has expired.
+  try { await redis(lease, ["EVAL", "if redis.call('GET',KEYS[1]) == ARGV[1] then return redis.call('DEL',KEYS[1]) else return 0 end", 1, lease.lockKey, lease.owner]); } catch {}
+}
+async function confirmQuota(lease: QuotaLease): Promise<boolean> {
+  try {
+    const result = await redis(lease, ["EVAL", "if redis.call('GET',KEYS[2]) ~= ARGV[1] then return 0 end; local v=redis.call('SET',KEYS[1],'1','NX','EX',86400); redis.call('DEL',KEYS[2]); if v then return 1 else return 0 end", 2, lease.key, lease.lockKey, lease.owner]);
+    return result === 1;
+  } catch { return false; }
 }
 export const Route = createFileRoute("/api/branding/preview")({
   server: { handlers: { POST: async ({ request }) => {
@@ -32,7 +57,8 @@ export const Route = createFileRoute("/api/branding/preview")({
     if (!body || !validText(body['name'],120) || !validText(body['sector'],120) || (body['style'] && !validText(body['style'],120)) || (body['colors'] && !validText(body['colors'],120))) return json({ error: "Completa el nombre y el sector de tu marca." }, 400);
     const account = getEnv("CLOUDFLARE_ACCOUNT_ID"), apiToken = getEnv("CLOUDFLARE_AI_API_TOKEN");
     if (!account || !apiToken) return json({ error: "El generador visual aún no está configurado en Cloudflare." }, 503);
-    const guard = await quota(request); if (guard) return guard;
+    const reservation = await reserveQuota(request); if (reservation.error) return reservation.error;
+    const lease = reservation.lease!;
     const concept = body['concept'] === "symbol" ? "minimal iconic symbol" : body['concept'] === "energy" ? "expressive dynamic abstract mark" : "refined monogram combining the brand initials";
     const prompt = [
       "Professional brand identity concept board, single square image, polished premium visual design, clean minimalist composition, bold symbolic mark, carefully balanced shapes, sophisticated brand aesthetic.",
@@ -44,11 +70,13 @@ export const Route = createFileRoute("/api/branding/preview")({
         method: "POST", headers: { Authorization: "Bearer " + apiToken, "Content-Type": "application/json" },
         body: JSON.stringify({ prompt, steps: 4 }), signal: AbortSignal.timeout(60000)
       });
-      if (!response.ok) { console.warn("BRANDING_IMAGE_PROVIDER_STATUS", response.status); return json({ error: "No se pudo generar la vista previa. Inténtalo más tarde." }, 502); }
+      if (!response.ok) { console.warn("BRANDING_IMAGE_PROVIDER_STATUS", response.status); return json({ error: "Cloudflare AI rechazó la generación (HTTP " + response.status + ").", }, 502); }
       const result = await response.json() as { success?: boolean; result?: { image?: string } };
       const image = result.result?.image;
       if (!result.success || !image || image.length > 9_000_000) return json({ error: "El proveedor no devolvió una imagen válida." }, 502);
+      if (!await confirmQuota(lease)) return json({ error: "No se pudo registrar la generación. Inténtalo de nuevo." }, 503);
       return json({ preview: "data:image/jpeg;base64," + image, model: MODEL, notice: "Vista previa conceptual gratuita. No es un logotipo vectorial ni un archivo final listo para uso comercial." });
     } catch { return json({ error: "El generador visual tardó demasiado o no respondió." }, 504); }
+    finally { await releaseQuota(lease); }
   } } },
 });
