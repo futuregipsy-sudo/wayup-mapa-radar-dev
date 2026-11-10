@@ -2,6 +2,7 @@ import { ArrowRight, Maximize2, Minimize2, RotateCcw, Send, Sparkles, X } from "
 import { useEffect, useRef, useState } from "react";
 
 import logo from "@/assets/wayapp-logo.png";
+import { WayAppMap } from "./WayAppMap";
 
 type Msg = { role: "user" | "assistant"; text: string };
 
@@ -65,6 +66,7 @@ export function WayAppChat({ onClose, onExpand, expanded = false }: ChatProps) {
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [showAuditOffer, setShowAuditOffer] = useState(false);
+  const [toolPanel, setToolPanel] = useState<"map" | "radar" | null>(null);
   const [showPricingLink, setShowPricingLink] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
@@ -356,6 +358,11 @@ export function WayAppChat({ onClose, onExpand, expanded = false }: ChatProps) {
         )}
       </div>
 
+      <div style={{ padding: "8px 16px", borderTop: "1px solid #e9e5e0" }}>
+        <button type="button" aria-expanded={toolPanel === "radar"} onClick={() => setToolPanel(toolPanel === "radar" ? null : "radar")} style={{ display: "flex", width: "100%", alignItems: "center", justifyContent: "space-between", padding: "12px", marginBottom: 7, border: "1px solid #dfe4ff", borderRadius: 16, background: "#fff", textAlign: "left", cursor: "pointer" }}><span><strong>⌕ Analizar mi negocio con Smart Radar</strong><small style={{ display: "block", color: "#797b8a" }}>Diagnóstico preliminar · OpenStreetMap</small></span><span>›</span></button>
+        <button type="button" aria-expanded={toolPanel === "map"} onClick={() => setToolPanel(toolPanel === "map" ? null : "map")} style={{ display: "flex", width: "100%", alignItems: "center", justifyContent: "space-between", padding: "12px", border: "1px solid #e7e2d9", borderRadius: 16, background: "#fff", textAlign: "left", cursor: "pointer" }}><span><strong>⌖ Buscar mi negocio</strong><small style={{ display: "block", color: "#797b8a" }}>Mapa interactivo · Piloto</small></span><span>⌄</span></button>
+        {toolPanel && <div style={{ maxHeight: 340, overflowY: "auto", padding: "0 4px" }}><WayAppMap mode={toolPanel} /></div>}
+      </div>
       <form
         className="wa-composer"
         onSubmit={(e) => {
