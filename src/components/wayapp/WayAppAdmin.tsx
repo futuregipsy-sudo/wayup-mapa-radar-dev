@@ -18,6 +18,7 @@ export function WayAppAdmin() {
   const { data: session, isPending } = authClient.useSession();
   const userId = session?.user?.id;
   const [googleConfigured, setGoogleConfigured] = useState<boolean | null>(null);
+  const [authChecks, setAuthChecks] = useState<Record<string, boolean> | null>(null);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -25,7 +26,7 @@ export function WayAppAdmin() {
   useEffect(() => {
     fetch("/api/auth/status", { cache: "no-store" })
       .then((r) => r.json())
-      .then((data: { googleConfigured?: boolean }) => setGoogleConfigured(Boolean(data.googleConfigured)))
+      .then((data: { googleConfigured?: boolean; checks?: Record<string, boolean> }) => { setGoogleConfigured(Boolean(data.googleConfigured)); setAuthChecks(data.checks ?? null); })
       .catch(() => setGoogleConfigured(false));
   }, []);
 
@@ -51,7 +52,8 @@ export function WayAppAdmin() {
   async function signIn() {
     setError("");
     try {
-      await authClient.signIn.social({ provider: "google", callbackURL: "/admin" });
+      const result = await authClient.signIn.social({ provider: "google", callbackURL: "/admin" });
+      if (result.error) setError(result.error.message || "No se ha podido iniciar sesión con Google.");
     } catch {
       setError("No se ha podido iniciar sesión. Comprueba la configuración OAuth de Google.");
     }
@@ -93,8 +95,10 @@ export function WayAppAdmin() {
             </p>
             {googleConfigured === false && (
               <div className="wa-admin-notice">
-                El acceso con Google aún no está configurado. Faltan las credenciales OAuth de Google o el
-                secreto de sesión en el entorno del servidor.
+                El acceso con Google no está disponible en este despliegue. Comprueba la configuración de Cloudflare.
+                {authChecks && <ul style={{ textAlign: "left", marginTop: 10 }}>
+                  {Object.entries({ googleClient: "Cliente OAuth de Google", sessionSecret: "Secreto de sesión", database: "Conexión de Neon", adminAllowlist: "Correos de administradores", authUrl: "URL de autenticación" }).map(([key, label]) => <li key={key}>{authChecks[key] ? "✓" : "✕"} {label}</li>)}
+                </ul>}
               </div>
             )}
             {error && <div className="wa-admin-error">{error}</div>}
