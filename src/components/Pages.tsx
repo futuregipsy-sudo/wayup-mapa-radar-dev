@@ -3,7 +3,6 @@ import { LocaleProvider } from "@/i18n/LocaleProvider";
 
 import { SiteHeader } from "./SiteHeader";
 import { Hero } from "./Hero";
-import { WayAppMap } from "./wayapp/WayAppMap";
 import { Services } from "./Services";
 import { Method } from "./Method";
 // import { Cases } from "./Cases";
@@ -22,7 +21,6 @@ export function HomePage({ locale }: { locale: Locale }) {
       <SiteHeader />
       <main>
         <Hero />
-        <WayAppMap />
         <Services />
         <Method />
         {/* <Cases /> */}
