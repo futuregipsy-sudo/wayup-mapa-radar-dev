@@ -191,4 +191,4 @@
 .wa-hero-balloon { position: absolute; z-index: 2; width: 22px; height: 31px; top: 2px; right: 2px; filter: drop-shadow(0 1px 2px rgba(10,20,70,.18)); }
 
 /* Balloon-only hero identity: centered and prominent, no W. */
-.wa-hero-mark .wa-hero-balloon { width: 31px; height: 43px; top: 50%; left: 43%; right: auto; transform: translate(-50%, -50%); filter: drop-shadow(0 1px 2px rgba(10,20,70,.18)); }
+.wa-hero-mark .wa-hero-balloon { width: 31px; height: 43px; top: 50%; left: calc(43% + 0.5px); right: auto; transform: translate(-50%, -50%); filter: drop-shadow(0 1px 2px rgba(10,20,70,.18)); }
