@@ -17,10 +17,10 @@ export function BrandingStudio({ onBrief }: { onBrief: (prompt: string) => void 
   function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const prompt = [
-      "Actúa como director creativo senior de branding de WAY UP. Prepara un briefing profesional para una propuesta de identidad visual.",
+      "WAY.APP Design Studio: el cliente solicita propuestas visuales. Responde únicamente con tres opciones de tres líneas cada una (9 líneas de propuesta).",
       "Marca: " + name.trim(), "Sector: " + sector.trim(), "Estilo: " + (style.trim() || "por definir"),
       "Público: " + (audience.trim() || "por definir"), "Colores: " + (colors.trim() || "por definir"),
-      "Propón un concepto creativo, personalidad, paleta HEX, tipografías sugeridas y tres ideas de logotipo. Explica qué falta confirmar. No afirmes haber generado imágenes, archivos descargables ni haber cobrado. La generación visual y el pago estarán disponibles cuando se integren y verifiquen."
+      "Para cada opción: línea 1 nombre en negrita, línea 2 composición, línea 3 colores y estilo. No incluyas briefing, personalidad de marca, tipografías, apartados pendientes ni preguntas adicionales, salvo cuál de las tres prefiere. No afirmes haber generado imágenes ni cobrado."
     ].join("\n");
     onBrief(prompt);
   }
