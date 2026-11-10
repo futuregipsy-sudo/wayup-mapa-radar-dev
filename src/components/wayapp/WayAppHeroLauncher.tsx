@@ -11,7 +11,6 @@ export function WayAppHeroLauncher() {
         aria-label="Abrir el asistente WAY.APP"
       >
         <span className="wa-hero-mark" aria-hidden="true">
-          <span className="wa-hero-letter">W.</span>
           <svg className="wa-hero-balloon" viewBox="0 0 32 44" fill="none" aria-hidden="true">
             <path d="M16 2C7 2 3 9 3 17c0 8 6 15 13 19 7-4 13-11 13-19C29 9 25 2 16 2Z" fill="#fff" stroke="#dce4ff" strokeWidth="1.4"/>
             <path d="M16 3C10 7 9 13 9 19c0 6 3 12 7 17 4-5 7-11 7-17 0-6-1-12-7-16Z" fill="#dbe3ff"/>
