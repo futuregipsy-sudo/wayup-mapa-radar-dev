@@ -26,12 +26,17 @@ export function WayAppMap({ mode = "map", initialWebsite = "" }: { mode?: "all" 
     } catch (e) { setError(e instanceof Error ? e.message : "Error de búsqueda."); }
     finally { setBusy(false); }
   }
+  function normalizeWebsite(input: string): string {
+    const value = input.trim();
+    if (!value) return "";
+    return /^https?:\/\//i.test(value) ? value : "https://" + value;
+  }
   async function analyze(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
     setBusy(true); setError(""); setAudit(null);
     try {
-      const response = await fetch("/api/seo-audit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: website.trim() }) });
+      const response = await fetch("/api/seo-audit", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: normalizeWebsite(website) }) });
       const data = await response.json() as Audit & { error?: string };
       if (!response.ok) throw new Error(data.error || "No se pudo auditar.");
       setAudit(data);
@@ -61,7 +66,7 @@ export function WayAppMap({ mode = "map", initialWebsite = "" }: { mode?: "all" 
     {(mode === "radar" || mode === "all") && <>
       <form onSubmit={analyze}>
         <label htmlFor="wayapp-seo-url"><strong>Smart Radar SEO · Auditoría de web</strong></label>
-        <input id="wayapp-seo-url" type="url" required maxLength={500} style={inputStyle} value={website} onChange={e => setWebsite(e.target.value)} placeholder="https://www.tunegocio.es" />
+        <input id="wayapp-seo-url" type="text" inputMode="url" required maxLength={500} style={inputStyle} value={website} onChange={e => setWebsite(e.target.value)} placeholder="www.tunegocio.es o https://tunegocio.es" />
         <button type="submit" disabled={busy || !website.trim()} style={buttonStyle}>{busy ? "Analizando..." : "Analizar con PageSpeed"}</button>
       </form>
       {audit && <div style={{ padding: 10, marginTop: 10, background: "#f5f6fc", borderRadius: 10 }}>
