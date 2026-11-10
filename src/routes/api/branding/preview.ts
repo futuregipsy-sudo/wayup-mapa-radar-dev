@@ -4,6 +4,24 @@ import { json } from "@/server/wayapp/http";
 
 const MODEL = "@cf/black-forest-labs/flux-1-schnell";
 const MAX_BYTES = 3000;
+// Read Cloudflare Worker bindings when process.env is unavailable.
+// Keep this scoped to branding to avoid affecting working chat/auth routes.
+async function imageCredentials(): Promise<{ account?: string; apiToken?: string }> {
+  const account = getEnv("CLOUDFLARE_ACCOUNT_ID");
+  const apiToken = getEnv("CLOUDFLARE_AI_API_TOKEN");
+  if (account && apiToken) return { account, apiToken };
+  try {
+    const { env } = await import("cloudflare:workers");
+    const bindings = env as unknown as Record<string, unknown>;
+    const read = (name: string): string | undefined => {
+      const value = bindings[name];
+      return typeof value === "string" && value.trim() ? value.trim() : undefined;
+    };
+    return { account: account ?? read("CLOUDFLARE_ACCOUNT_ID"), apiToken: apiToken ?? read("CLOUDFLARE_AI_API_TOKEN") };
+  } catch {
+    return { account, apiToken };
+  }
+}
 function validText(x: unknown, max: number): x is string { return typeof x === "string" && x.trim().length > 0 && x.length <= max; }
 type QuotaLease = { key: string; lockKey: string; owner: string; url: string; token: string };
 async function redis(lease: QuotaLease, command: (string | number)[]): Promise<unknown> {
@@ -55,8 +73,8 @@ export const Route = createFileRoute("/api/branding/preview")({
     if (origin && origin !== new URL(request.url).origin) return json({ error: "Origen no autorizado." }, 403);
     const body = await request.json().catch(()=>null) as Record<string, unknown> | null;
     if (!body || !validText(body['name'],120) || !validText(body['sector'],120) || (body['style'] && !validText(body['style'],120)) || (body['colors'] && !validText(body['colors'],120))) return json({ error: "Completa el nombre y el sector de tu marca." }, 400);
-    const account = getEnv("CLOUDFLARE_ACCOUNT_ID"), apiToken = getEnv("CLOUDFLARE_AI_API_TOKEN");
-    if (!account || !apiToken) return json({ error: "El generador visual aún no está configurado en Cloudflare." }, 503);
+    const { account, apiToken } = await imageCredentials();
+    if (!account || !apiToken) return json({ error: "El generador visual no puede leer sus credenciales en este despliegue.", diagnostic: { accountConfigured: Boolean(account), tokenConfigured: Boolean(apiToken) } }, 503);
     const reservation = await reserveQuota(request); if (reservation.error) return reservation.error;
     const lease = reservation.lease!;
     const concept = body['concept'] === "symbol" ? "minimal iconic symbol" : body['concept'] === "energy" ? "expressive dynamic abstract mark" : "refined monogram combining the brand initials";
