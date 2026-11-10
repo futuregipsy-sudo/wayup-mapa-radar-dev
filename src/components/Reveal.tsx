@@ -22,7 +22,7 @@ export function ScrollScale({ children, className }: { children: ReactNode; clas
   const reduce = useReducedMotion();
   const { scrollYProgress } = useScroll({ target: ref, offset: ["start end", "center center"] });
   const scale = useTransform(scrollYProgress, [0, 1], [reduce ? 1 : 0.92, 1]);
-  const opacity = useTransform(scrollYProgress, [0, 0.5], [reduce ? 1 : 0.4, 1]);
+  const opacity = 1;
   return (
     <motion.div ref={ref} style={{ scale, opacity }} className={className}>
       {children}
@@ -43,7 +43,7 @@ export function Reveal({ children, delay = 0, y = 28, className }: RevealProps) 
   return (
     <motion.div
       className={className}
-      initial={{ opacity: 0, y: reduce ? 0 : y, filter: reduce ? "blur(0px)" : "blur(6px)" }}
+      initial={{ opacity: 1, y: reduce ? 0 : y, filter: "blur(0px)" }}
       whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
       viewport={{ once: true, margin: "-80px" }}
       transition={{ duration: 0.9, ease: easeLux, delay }}
