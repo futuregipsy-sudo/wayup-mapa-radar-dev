@@ -22,16 +22,16 @@ function asksAboutPricing(text: string): boolean {
  * React escapes text nodes, so model output cannot inject HTML.
  */
 function renderAssistantText(text: string) {
-  // Normalize common model Markdown into clean text; never interpret arbitrary HTML.
+  // Render only safe, limited Markdown. React escapes all text nodes.
   const clean = text
-    .replace(/^#{1,6}\\s+/gm, "")
-    .replace(/^\\s*[-*]\\s+/gm, "• ")
-    .replace(/^\\s*\\|?\\s*:?-{3,}:?\\s*(?:\\|\\s*:?-{3,}:?\\s*)+\\|?\\s*$/gm, "")
-    .replace(/^\\|(.+)\\|\\s*$/gm, (_line, cells: string) => cells.split("|").map(cell => cell.trim()).filter(Boolean).join(" · "))
-    .replace(/\\n{3,}/g, "\\n\\n");
-  const tokens = clean.split(/(\\[Servicios y Tarifas\\]\\(\\/servicios-y-tarifas\\)|\\*\\*[^*\\n]+\\*\\*|(?<!\\*)\\*[^*\\n]+\\*(?!\\*))/gi);
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s*[-*]\s+/gm, "• ")
+    .replace(/^\|(.+)\|\s*$/gm, (_line, cells: string) =>
+      cells.split("|").map(cell => cell.trim()).filter(Boolean).join(" · "))
+    .replace(/\n{3,}/g, "\n\n");
+  const tokens = clean.split(/(\[Servicios y Tarifas\]\(\/servicios-y-tarifas\)|\*\*[^*\n]+\*\*|\*[^*\n]+\*)/gi);
   return tokens.map((token, index) => {
-    if (/^\\[Servicios y Tarifas\\]\\(\\/servicios-y-tarifas\\)$/i.test(token))
+    if (/^\[Servicios y Tarifas\]\(\/servicios-y-tarifas\)$/i.test(token))
       return <a key={index} href="/servicios-y-tarifas" className="wa-inline-link">Servicios y Tarifas</a>;
     if (token.startsWith("**") && token.endsWith("**"))
       return <strong key={index}>{token.slice(2, -2)}</strong>;
