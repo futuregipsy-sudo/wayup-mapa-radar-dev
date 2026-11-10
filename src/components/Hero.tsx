@@ -37,7 +37,7 @@ export function Hero() {
           width={1920}
           height={1088}
           fetchPriority="high"
-          initial={{ opacity: 0, scale: reduce ? 1 : 1.06 }}
+          initial={{ opacity: 1, scale: reduce ? 1 : 1.06 }}
           animate={{ opacity: 0.5, scale: 1 }}
           transition={{ duration: 2.2, ease: easeLux }}
           className="h-full w-full object-cover object-[70%_center] saturate-[0.7]"
@@ -54,7 +54,7 @@ export function Hero() {
       >
         <div className="lg:col-span-7">
           <motion.p
-            initial={{ opacity: 0, y: 12 }}
+            initial={{ opacity: 1, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, ease: easeLux }}
             className="eyebrow flex items-center gap-3"
@@ -80,7 +80,7 @@ export function Hero() {
           </h1>
 
           <motion.p
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 1, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.9, ease: easeLux, delay: 0.8 }}
             className="mt-8 max-w-xl text-lg leading-relaxed text-muted-foreground md:text-xl"
@@ -90,7 +90,7 @@ export function Hero() {
 
           {/* Lanzador de WAY.APP dentro de la columna izquierda del hero (abre el chat integrado). */}
           <motion.div
-            initial={{ opacity: 0, y: 16 }}
+            initial={{ opacity: 1, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, ease: easeLux, delay: 0.9 }}
             className="mt-7 max-w-xl"
@@ -99,7 +99,7 @@ export function Hero() {
           </motion.div>
 
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 1, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.9, ease: easeLux, delay: 0.95 }}
             className="mt-10 flex flex-col gap-3 sm:flex-row sm:items-center"
