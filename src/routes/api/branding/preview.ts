@@ -24,7 +24,7 @@ async function reserveQuota(request: Request): Promise<{ lease?: QuotaLease; err
   const hash = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2,"0")).join("").slice(0,32);
   // v2 avoids penalizing visitors whose failed generations were counted by the old code.
   const key = "wayapp:branding:preview:v2:" + hash;
-  const lease: QuotaLease = { key, lockKey: key + ":lock", owner: crypto.randomUUID(), url: url.replace(/\\/$/,""), token };
+  const lease: QuotaLease = { key, lockKey: key + ":lock", owner: crypto.randomUUID(), url: url.endsWith("/") ? url.slice(0, -1) : url, token };
   try {
     if (await redis(lease, ["EXISTS", key]) === 1) return { error: json({ error: "Ya has utilizado tu vista previa gratuita de hoy. Vuelve mañana." }, 429) };
     const acquired = await redis(lease, ["SET", lease.lockKey, lease.owner, "NX", "EX", 120]);
