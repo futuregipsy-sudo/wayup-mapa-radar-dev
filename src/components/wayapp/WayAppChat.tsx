@@ -67,6 +67,8 @@ export function WayAppChat({ onClose, onExpand, expanded = false }: ChatProps) {
   const [busy, setBusy] = useState(false);
   const [showAuditOffer, setShowAuditOffer] = useState(false);
   const [toolPanel, setToolPanel] = useState<"map" | "radar" | null>(null);
+  const [auditWebsite, setAuditWebsite] = useState("");
+  const [pendingRadarPrompt, setPendingRadarPrompt] = useState<string | null>(null);
   const [showPricingLink, setShowPricingLink] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
@@ -74,10 +76,24 @@ export function WayAppChat({ onClose, onExpand, expanded = false }: ChatProps) {
   useEffect(() => {
     const onRadarAnalyze = (event: Event) => {
       const prompt = (event as CustomEvent<{ prompt?: string }>).detail?.prompt;
-      if (typeof prompt === "string" && prompt.length <= 2000) setValue(prompt);
+      if (typeof prompt === "string" && prompt.length <= 2000) {
+        setToolPanel(null);
+        setPendingRadarPrompt(prompt);
+      }
     };
+    const onOpenAudit = (event: Event) => {
+      const website = (event as CustomEvent<{ website?: string }>).detail?.website;
+      if (typeof website === "string" && /^https?:\/\//i.test(website)) {
+        setAuditWebsite(website);
+        setToolPanel("radar");
+      }
+    };
+    window.addEventListener("wayapp:open-seo-audit", onOpenAudit);
     window.addEventListener("wayapp:radar-analyze", onRadarAnalyze);
-    return () => window.removeEventListener("wayapp:radar-analyze", onRadarAnalyze);
+    return () => {
+      window.removeEventListener("wayapp:radar-analyze", onRadarAnalyze);
+      window.removeEventListener("wayapp:open-seo-audit", onOpenAudit);
+    };
   }, []);
 
   useEffect(() => {
@@ -158,6 +174,13 @@ export function WayAppChat({ onClose, onExpand, expanded = false }: ChatProps) {
       setBusy(false);
     }
   };
+
+  useEffect(() => {
+    if (!pendingRadarPrompt || busy) return;
+    const prompt = pendingRadarPrompt;
+    setPendingRadarPrompt(null);
+    void send(prompt);
+  }, [pendingRadarPrompt, busy]);
 
   return (
     <div className="wa-shell">
@@ -359,9 +382,9 @@ export function WayAppChat({ onClose, onExpand, expanded = false }: ChatProps) {
       </div>
 
       <div style={{ padding: "8px 16px", borderTop: "1px solid #e9e5e0" }}>
-        <button type="button" aria-expanded={toolPanel === "radar"} onClick={() => setToolPanel(toolPanel === "radar" ? null : "radar")} style={{ display: "flex", width: "100%", alignItems: "center", justifyContent: "space-between", padding: "12px", marginBottom: 7, border: "1px solid #dfe4ff", borderRadius: 16, background: "#fff", textAlign: "left", cursor: "pointer" }}><span><strong>⌕ Analizar mi negocio con Smart Radar</strong><small style={{ display: "block", color: "#797b8a" }}>Diagnóstico preliminar · OpenStreetMap</small></span><span>›</span></button>
-        <button type="button" aria-expanded={toolPanel === "map"} onClick={() => setToolPanel(toolPanel === "map" ? null : "map")} style={{ display: "flex", width: "100%", alignItems: "center", justifyContent: "space-between", padding: "12px", border: "1px solid #e7e2d9", borderRadius: 16, background: "#fff", textAlign: "left", cursor: "pointer" }}><span><strong>⌖ Buscar mi negocio</strong><small style={{ display: "block", color: "#797b8a" }}>Mapa interactivo · Piloto</small></span><span>⌄</span></button>
-        {toolPanel && <div style={{ maxHeight: 340, overflowY: "auto", padding: "0 4px" }}><WayAppMap mode={toolPanel} /></div>}
+        <button type="button" aria-expanded={toolPanel === "radar"} onClick={() => setToolPanel(toolPanel === "radar" ? null : "radar")} style={{ display: "flex", width: "100%", alignItems: "center", justifyContent: "space-between", padding: "12px", marginBottom: 7, border: "1px solid #dfe4ff", borderRadius: 16, background: "#fff", textAlign: "left", cursor: "pointer" }}><span><strong>⌕ Analizar mi negocio con Smart Radar</strong><small style={{ display: "block", color: "#797b8a" }}>Diagnóstico SEO · Google PageSpeed</small></span><span>›</span></button>
+        <button type="button" aria-expanded={toolPanel === "map"} onClick={() => setToolPanel(toolPanel === "map" ? null : "map")} style={{ display: "flex", width: "100%", alignItems: "center", justifyContent: "space-between", padding: "12px", border: "1px solid #e7e2d9", borderRadius: 16, background: "#fff", textAlign: "left", cursor: "pointer" }}><span><strong>⌖ Buscar mi negocio</strong><small style={{ display: "block", color: "#797b8a" }}>Búsqueda · Google Places</small></span><span>⌄</span></button>
+        {toolPanel && <div style={{ maxHeight: 340, overflowY: "auto", padding: "0 4px" }}><WayAppMap mode={toolPanel} initialWebsite={auditWebsite} /></div>}
       </div>
       <form
         className="wa-composer"
