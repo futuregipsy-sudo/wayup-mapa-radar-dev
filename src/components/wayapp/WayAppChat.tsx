@@ -22,17 +22,22 @@ function asksAboutPricing(text: string): boolean {
  * React escapes text nodes, so model output cannot inject HTML.
  */
 function renderAssistantText(text: string) {
-  // Only link to the known internal route; model output cannot inject arbitrary URLs or HTML.
-  const linkPattern = /(\[Servicios y Tarifas\]\(\/servicios-y-tarifas\))/gi;
-  return text.split(linkPattern).flatMap((part, partIndex) => {
-    if (partIndex % 2 === 1) {
-      return [<a key={`link-${partIndex}`} href="/servicios-y-tarifas" className="wa-inline-link">Servicios y Tarifas</a>];
-    }
-    return part.split(/(\*\*[^*\n]+\*\*)/g).map((fragment, index) =>
-      fragment.startsWith("**") && fragment.endsWith("**") ? (
-        <strong key={`bold-${partIndex}-${index}`}>{fragment.slice(2, -2)}</strong>
-      ) : fragment,
-    );
+  // Normalize common model Markdown into clean text; never interpret arbitrary HTML.
+  const clean = text
+    .replace(/^#{1,6}\\s+/gm, "")
+    .replace(/^\\s*[-*]\\s+/gm, "• ")
+    .replace(/^\\s*\\|?\\s*:?-{3,}:?\\s*(?:\\|\\s*:?-{3,}:?\\s*)+\\|?\\s*$/gm, "")
+    .replace(/^\\|(.+)\\|\\s*$/gm, (_line, cells: string) => cells.split("|").map(cell => cell.trim()).filter(Boolean).join(" · "))
+    .replace(/\\n{3,}/g, "\\n\\n");
+  const tokens = clean.split(/(\\[Servicios y Tarifas\\]\\(\\/servicios-y-tarifas\\)|\\*\\*[^*\\n]+\\*\\*|(?<!\\*)\\*[^*\\n]+\\*(?!\\*))/gi);
+  return tokens.map((token, index) => {
+    if (/^\\[Servicios y Tarifas\\]\\(\\/servicios-y-tarifas\\)$/i.test(token))
+      return <a key={index} href="/servicios-y-tarifas" className="wa-inline-link">Servicios y Tarifas</a>;
+    if (token.startsWith("**") && token.endsWith("**"))
+      return <strong key={index}>{token.slice(2, -2)}</strong>;
+    if (token.startsWith("*") && token.endsWith("*") && token.length > 2)
+      return <em key={index}>{token.slice(1, -1)}</em>;
+    return token;
   });
 }
 
