@@ -144,7 +144,7 @@ export async function reserveGroqQuotaDetailed(estimatedTokens: number): Promise
   if (result === 0) return { reservation: { id, estimatedTokens }, reason: null };
   const reasons = ["", "minute_requests", "day_requests", "minute_tokens", "day_tokens", "concurrent", "duplicate"] as const;
   if (result < 1 || result > 6) throw new Error("Unexpected quota decision");
-  return { reservation: null, reason: reasons[result] };
+  return { reservation: null, reason: reasons[result] || null };
 }
 export async function reserveGroqQuota(estimatedTokens: number): Promise<GroqReservation | null> {
   return (await reserveGroqQuotaDetailed(estimatedTokens)).reservation;
