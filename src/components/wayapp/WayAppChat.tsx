@@ -121,7 +121,7 @@ export function WayAppChat({ onClose, onExpand, expanded = false }: ChatProps) {
     const lastAssistant = [...messages].reverse().find(m => m.role === "assistant")?.text ?? "";
     const visualContext = messages.some(m => /(?:logotipo|logo|diseñ|marca|cartel|banner|ilustraci[oó]n|imagen|branding)/i.test(m.text));
     const confirmation = /^(?:(?:la |el |opci[oó]n )?0?[123]|s[ií](?:,.*)?|quiero verl[oa]|adelante|gen[eé]ral[oa]|al rev[eé]s|m[aá]s .+)\s*[.!]?$/i.test(text);
-    const awaitingChoice = /(?:¿cu[aá]l|¿quieres ver|¿te gustar[ií]a visualizar|opci[oó]n 0?[123]|0[123]\s*[·.:])/i.test(lastAssistant);
+    const awaitingChoice = /(?:¿cu[aá]l|¿quieres ver|¿te gustar[ií]a visualizar|¿te gustar[ií]a avanzar|¿quieres avanzar|¿avanzamos|avanzar con esta propuesta|opci[oó]n 0?[123]|0[123]\s*[·.:])/i.test(lastAssistant);
     if (visualContext && confirmation && awaitingChoice) {
       setMessages(m => [...m, { role: "user", text }]);
       setValue("");
@@ -134,7 +134,8 @@ export function WayAppChat({ onClose, onExpand, expanded = false }: ChatProps) {
         const named = allText.match(/(?:Marca:|para |logotipo de |logo de )\s*([\p{L}\p{N}][\p{L}\p{N} .&-]{1,55})/iu);
         const name = (named?.[1] ?? "Proyecto creativo").split(/[\n.,:]/)[0]?.trim() || "Proyecto creativo";
         const sector = allText.match(/Sector:\s*([^\n]+)/i)?.[1]?.slice(0, 120) || "Diseño gráfico e identidad visual";
-        const choice = text.match(/[123]/)?.[0] ?? lastAssistant.match(/opci[oó]n\s*0?([123])/i)?.[1] ?? "1";
+        const recentChoice = [...messages].reverse().find(m => m.role === "user" && /^(?:0?[123]|opci[oó]n\s*0?[123])$/i.test(m.text.trim()))?.text;
+        const choice = text.match(/\b0?([123])\b/)?.[1] ?? recentChoice?.match(/[123]/)?.[0] ?? lastAssistant.match(/(?:opci[oó]n\s*|^\s*0?)([123])/im)?.[1] ?? "1";
         const concept = choice === "2" ? "monogram" : choice === "3" ? "energy" : "symbol";
         const response = await fetch("/api/branding/preview", {
           method: "POST", headers: { "Content-Type": "application/json" },
