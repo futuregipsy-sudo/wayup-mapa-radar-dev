@@ -20,7 +20,7 @@ export async function guardGoogleApi(request: Request, kind: "places" | "pagespe
     if (!res.ok) throw new Error("Redis unavailable");
     const data = await res.json() as Array<{ result?: unknown; error?: string }>;
     if (data[0]?.error || !Number.isFinite(Number(data[0]?.result))) throw new Error("Redis invalid response");
-    if (Number(data[0].result) > limit) return Response.json({ error: "Has alcanzado el límite temporal de consultas. Inténtalo más tarde." }, { status: 429, headers: { "Retry-After": "600" } });
+    if (Number(data[0]?.result) > limit) return Response.json({ error: "Has alcanzado el límite temporal de consultas. Inténtalo más tarde." }, { status: 429, headers: { "Retry-After": "600" } });
     return null;
   } catch (error) {
     console.warn("WAYAPP_GOOGLE_QUOTA_ERROR", { kind, category: error instanceof Error && error.name === "TimeoutError" ? "timeout" : "redis_unavailable" });
