@@ -122,7 +122,9 @@ export function WayAppChat({ onClose, onExpand, expanded = false }: ChatProps) {
     const visualContext = messages.some(m => /(?:logotipo|logo|diseñ|marca|cartel|banner|ilustraci[oó]n|imagen|branding)/i.test(m.text));
     const confirmation = /^(?:(?:la |el |opci[oó]n )?0?[123]|s[ií](?:,.*)?|quiero verl[oa]|adelante|gen[eé]ral[oa]|al rev[eé]s|m[aá]s .+)\s*[.!]?$/i.test(text);
     const awaitingChoice = /(?:¿cu[aá]l|¿quieres ver|¿te gustar[ií]a visualizar|¿te gustar[ií]a avanzar|¿quieres avanzar|¿avanzamos|avanzar con esta propuesta|opci[oó]n 0?[123]|0[123]\s*[·.:])/i.test(lastAssistant);
-    if (visualContext && confirmation && awaitingChoice) {
+    const directDesignRequest = /(?:haz(?:me)?|crea(?:me)?|diseña(?:me)?|genera(?:me)?|quiero|necesito|prepara(?:me)?|dib[uú]ja(?:me)?)\\b.{0,130}\\b(?:logo|logotipo|isotipo|imagen|ilustraci[oó]n|cartel|banner|p[oó]ster|portada|flyer|diseño|diseñar|marca)\\b|\\b(?:logo|logotipo|isotipo|cartel|banner|flyer)\\b.{0,80}\\b(?:para|de mi|de una|de un)\\b/i.test(text);
+    const designFollowup = visualContext && confirmation && (awaitingChoice || messages.some(m => m.role === "user" && /^(?:0?[123]|opci[oó]n\\s*0?[123])$/i.test(m.text.trim())));
+    if (directDesignRequest || designFollowup) {
       setMessages(m => [...m, { role: "user", text }]);
       setValue("");
       setDesignError("");
@@ -130,9 +132,9 @@ export function WayAppChat({ onClose, onExpand, expanded = false }: ChatProps) {
       setGeneratingDesign(true);
       setBusy(true);
       try {
-        const allText = messages.map(m => m.text).join("\n");
+        const allText = [...messages.map(m => m.text), text].join("\n");
         const named = allText.match(/(?:Marca:|para |logotipo de |logo de )\s*([\p{L}\p{N}][\p{L}\p{N} .&-]{1,55})/iu);
-        const name = (named?.[1] ?? "Proyecto creativo").split(/[\n.,:]/)[0]?.trim() || "Proyecto creativo";
+        const name = (named?.[1] ?? text.match(/(?:logo|logotipo|isotipo|cartel|banner|imagen|marca)\\s+(?:para|de)\\s+([^.,\\n]{2,55})/i)?.[1] ?? "Proyecto creativo").split(/[\n.,:]/)[0]?.trim() || "Proyecto creativo";
         const sector = allText.match(/Sector:\s*([^\n]+)/i)?.[1]?.slice(0, 120) || "Diseño gráfico e identidad visual";
         const recentChoice = [...messages].reverse().find(m => m.role === "user" && /^(?:0?[123]|opci[oó]n\s*0?[123])$/i.test(m.text.trim()))?.text;
         const choice = text.match(/\b0?([123])\b/)?.[1] ?? recentChoice?.match(/[123]/)?.[0] ?? lastAssistant.match(/(?:opci[oó]n\s*|^\s*0?)([123])/im)?.[1] ?? "1";
@@ -144,7 +146,7 @@ export function WayAppChat({ onClose, onExpand, expanded = false }: ChatProps) {
         const result = await response.json() as { preview?: string; error?: string };
         if (!response.ok || !result.preview) throw new Error(result.error || "No se pudo generar la imagen.");
         setDesignPreview(result.preview);
-        setMessages(m => [...m, { role: "assistant", text: "Aquí tienes tu **vista previa visual**. Es un concepto preliminar, no un logotipo vectorial final." }]);
+        setMessages(m => [...m, { role: "assistant", text: "**Vista previa generada.**" }]);
       } catch (error) {
         setDesignError(error instanceof Error ? error.message : "No se pudo generar la imagen.");
       } finally {
