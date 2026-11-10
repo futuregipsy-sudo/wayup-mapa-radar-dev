@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { getEnv } from "@/server/wayapp/env";
+import { guardGoogleApi } from "@/server/wayapp/google-api-guard";
 import { json } from "@/server/wayapp/http";
 
 function safeWebsite(value: string): string | null {
@@ -14,6 +15,8 @@ function safeWebsite(value: string): string | null {
 type Audit = { id: string; score?: number; title?: string; description?: string };
 export const Route = createFileRoute("/api/seo-audit")({
   server: { handlers: { POST: async ({ request }) => {
+    const guard = await guardGoogleApi(request, "pagespeed");
+    if (guard) return guard;
     const key = getEnv("PAGESPEED_API_KEY");
     if (!key) return json({ error: "PageSpeed Insights no está configurado." }, 503);
     const body = await request.json().catch(() => null) as { url?: unknown } | null;
