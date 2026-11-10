@@ -2,9 +2,10 @@ import { query } from "./db";
 import { requireAdmin } from "./admin-auth";
 import { isGoogleAuthConfigured } from "./auth";
 import { json, unauthorized } from "./http";
+import { getEnv, adminEmails } from "./env";
 
 export function handleAuthStatus(): Response {
-  return json({ googleConfigured: isGoogleAuthConfigured() });
+  return json({ googleConfigured: isGoogleAuthConfigured(), checks: { googleClient: Boolean(getEnv("GOOGLE_CLIENT_ID") && getEnv("GOOGLE_CLIENT_SECRET")), sessionSecret: (getEnv("BETTER_AUTH_SECRET")?.length ?? 0) >= 32, database: Boolean(getEnv("NEON_DATABASE_URL") || getEnv("NEON_POSTGRES_URL")), adminAllowlist: adminEmails().length > 0, authUrl: Boolean(getEnv("BETTER_AUTH_URL")) } });
 }
 
 export async function handleAdminMe(request: Request): Promise<Response> {
