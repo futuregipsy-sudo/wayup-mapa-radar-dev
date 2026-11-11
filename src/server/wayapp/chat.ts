@@ -4,7 +4,7 @@ import { extraAllowedOrigins, getEnv } from "./env";
 import { isLocalHost, json } from "./http";
 import { SYSTEM_PROMPT } from "./prompt";
 import { offTopicReply } from "./topic-guard";
-import { isNewConversationOverLimit, isOverLimit, reserveGroqQuotaDetailed, reconcileGroqQuota, releaseGroqQuota } from "./rate-limit";
+import { isNewConversationOverLimit, isOverLimit, reserveGroqQuotaDetailed, reconcileGroqQuota, releaseGroqQuota, reserveFallbackQuota, settleFallbackQuota, type FallbackReservation } from "./rate-limit";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -112,7 +112,8 @@ export async function handleChat(request: Request): Promise<Response> {
   }
 
   const groqKey = getEnv("GROQ_API_KEY");
-  if (!groqKey) return json({ error: "El servicio de IA aún no está configurado." }, 503);
+  const anyProvider = !!groqKey || (getEnv("WAYAPP_GEMINI_ENABLED") === "true" && !!getEnv("GEMINI_API_KEY")) || (getEnv("WAYAPP_CLOUDFLARE_ENABLED") === "true" && !!getEnv("CLOUDFLARE_ACCOUNT_ID") && !!getEnv("CLOUDFLARE_AI_API_TOKEN"));
+  if (!anyProvider) return json({ error: "El servicio de IA aún no está configurado." }, 503);
 
   if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY_BYTES) {
     return json({ error: "La solicitud es demasiado grande." }, 413);
@@ -293,33 +294,14 @@ export async function handleChat(request: Request): Promise<Response> {
   if (reservedTokens > MAX_ESTIMATED_REQUEST_TOKENS) {
     return json({ error: "La consulta supera el límite de contexto permitido." }, 413);
   }
-  let reservation;
-  try {
-    const decision = await reserveGroqQuotaDetailed(reservedTokens);
-    reservation = decision.reservation;
-    if (!reservation) {
-      // Log only a fixed rejection category and estimated size, never visitor text or identifiers.
-      console.warn("WAYAPP_QUOTA_REJECTED", { reason: decision.reason, estimatedTokens: reservedTokens });
-      const temporary = decision.reason === "minute_requests" || decision.reason === "minute_tokens" || decision.reason === "concurrent";
-      return new Response(JSON.stringify({
-        error: temporary
-          ? "WAY.APP está atendiendo muchas consultas ahora mismo. Inténtalo de nuevo en un minuto."
-          : "WAY.APP ha alcanzado temporalmente su capacidad de consultas. Inténtalo más tarde.",
-        code: "AI_QUOTA_REACHED",
-        retryAfterSeconds: temporary ? 60 : 600,
-      }), {
-        status: 429,
-        headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "Retry-After": temporary ? "60" : "600" },
-      });
-    }
-  } catch {
-    return json({ error: "No se puede verificar la cuota de IA. Inténtalo más tarde." }, 503);
-  }
+  // Reserve per provider at dispatch time, not globally against Groq.
+  // This allows a fallback when Groq has exhausted its own allowance.
+  let reservation: Awaited<ReturnType<typeof reserveGroqQuotaDetailed>>["reservation"] = null;
+  let fallbackReservation: FallbackReservation | null = null;
 
   try {
     await query("INSERT INTO messages (conversation_id, role, content) VALUES ($1, 'user', $2)", [conversationId, latestMessage.content]);
   } catch (error) {
-    await releaseGroqQuota(reservation).catch(() => undefined);
     logDatabaseError("visitor message persistence failed", error);
     return json({ error: "No se ha podido guardar el mensaje." }, 503);
   }
@@ -338,7 +320,7 @@ export async function handleChat(request: Request): Promise<Response> {
   const providers: Array<"groq" | "gemini" | "cloudflare" | "lovable"> = primary === "lovable" ? ["lovable", "groq", "gemini", "cloudflare"] : ["groq", "gemini", "cloudflare", "lovable"];
   let upstream: Response | undefined;
   let selectedProvider: "groq" | "gemini" | "cloudflare" | "lovable" = primary;
-  let groqReserved = true;
+  let groqReserved = false;
   let upstreamError = 502;
   for (const provider of providers) {
     if (provider === "lovable" && !fallbackEnabled) continue;
@@ -346,6 +328,15 @@ export async function handleChat(request: Request): Promise<Response> {
     if (provider === "cloudflare" && !cloudflareEnabled) continue;
     if (provider === "groq" && !groqKey) continue;
     try {
+      if (provider === "groq") {
+        const decision = await reserveGroqQuotaDetailed(reservedTokens);
+        if (!decision.reservation) continue;
+        reservation = decision.reservation;
+        groqReserved = true;
+      } else if (provider === "gemini" || provider === "cloudflare") {
+        fallbackReservation = await reserveFallbackQuota(provider, reservedTokens);
+        if (!fallbackReservation) continue;
+      }
       const isGroq = provider === "groq";
       const isGemini = provider === "gemini";
       const isCloudflare = provider === "cloudflare";
@@ -395,20 +386,32 @@ export async function handleChat(request: Request): Promise<Response> {
       }
       upstreamError = response.status;
       await response.body?.cancel().catch(() => undefined);
+      if (provider === "groq" && reservation) {
+        await reconcileGroqQuota(reservation, reservedTokens).catch(() => undefined);
+        reservation = null; groqReserved = false;
+      }
+      if (fallbackReservation) {
+        await settleFallbackQuota(fallbackReservation, reservedTokens).catch(() => undefined);
+        fallbackReservation = null;
+      }
       if (![429, 500, 502, 503, 504].includes(response.status)) break;
     } catch {
       upstreamError = 504;
+      if (provider === "groq" && reservation) {
+        await reconcileGroqQuota(reservation, reservedTokens).catch(() => undefined);
+        reservation = null; groqReserved = false;
+      }
+      if (fallbackReservation) {
+        await settleFallbackQuota(fallbackReservation, reservedTokens).catch(() => undefined);
+        fallbackReservation = null;
+      }
     }
   }
   if (!upstream || !upstream.body) {
-    await releaseGroqQuota(reservation).catch(() => undefined);
     return json({ error: "Ahora mismo no puedo responder. Puedes solicitar una auditoría gratuita desde el formulario de contacto." }, upstreamError === 429 ? 429 : 502);
   }
   // If Lovable answers, Groq did not generate tokens. Release the Groq reservation.
-  if (selectedProvider !== "groq") {
-    await releaseGroqQuota(reservation).catch(() => undefined);
-    groqReserved = false;
-  }
+
 
   const encoder = new TextEncoder();
   const upstreamBody = upstream.body;
@@ -480,7 +483,8 @@ export async function handleChat(request: Request): Promise<Response> {
       } finally {
         // On interrupted streams keep the conservative reservation; never undercount.
         const accountedTokens = actualTokens ?? Math.max(reservedTokens, estimateTokens(assistantText) + estimateTokens(instructions));
-        if (groqReserved) await reconcileGroqQuota(reservation, accountedTokens).catch(() => undefined);
+        if (groqReserved && reservation) await reconcileGroqQuota(reservation, accountedTokens).catch(() => undefined);
+        if (fallbackReservation) await settleFallbackQuota(fallbackReservation, accountedTokens).catch(() => undefined);
         reader.releaseLock();
       }
     },
