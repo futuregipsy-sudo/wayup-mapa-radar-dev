@@ -331,23 +331,28 @@ export async function handleChat(request: Request): Promise<Response> {
   const geminiKey = getEnv("GEMINI_API_KEY");
   // Opt-in until the preview has passed integration tests. No paid fallback by default.
   const geminiEnabled = getEnv("WAYAPP_GEMINI_ENABLED") === "true" && !!geminiKey;
+  const cfAccount = getEnv("CLOUDFLARE_ACCOUNT_ID");
+  const cfToken = getEnv("CLOUDFLARE_AI_API_TOKEN");
+  const cloudflareEnabled = getEnv("WAYAPP_CLOUDFLARE_ENABLED") === "true" && !!cfAccount && !!cfToken;
   const primary = getEnv("WAYAPP_PRIMARY_PROVIDER") === "lovable" && fallbackEnabled ? "lovable" : "groq";
-  const providers: Array<"groq" | "gemini" | "lovable"> = primary === "lovable" ? ["lovable", "groq", "gemini"] : ["groq", "gemini", "lovable"];
+  const providers: Array<"groq" | "gemini" | "cloudflare" | "lovable"> = primary === "lovable" ? ["lovable", "groq", "gemini", "cloudflare"] : ["groq", "gemini", "cloudflare", "lovable"];
   let upstream: Response | undefined;
-  let selectedProvider: "groq" | "gemini" | "lovable" = primary;
+  let selectedProvider: "groq" | "gemini" | "cloudflare" | "lovable" = primary;
   let groqReserved = true;
   let upstreamError = 502;
   for (const provider of providers) {
     if (provider === "lovable" && !fallbackEnabled) continue;
     if (provider === "gemini" && !geminiEnabled) continue;
+    if (provider === "cloudflare" && !cloudflareEnabled) continue;
     if (provider === "groq" && !groqKey) continue;
     try {
       const isGroq = provider === "groq";
       const isGemini = provider === "gemini";
-      const response = await fetch(isGroq ? "https://api.groq.com/openai/v1/chat/completions" : isGemini ? "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions" : relayUrl!, {
+      const isCloudflare = provider === "cloudflare";
+      const response = await fetch(isGroq ? "https://api.groq.com/openai/v1/chat/completions" : isGemini ? "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions" : isCloudflare ? `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(cfAccount!)}/ai/run/${getEnv("WAYAPP_CLOUDFLARE_MODEL") ?? "@cf/meta/llama-3.1-8b-instruct"}` : relayUrl!, {
         method: "POST",
-        headers: (isGroq || isGemini)
-          ? { Authorization: `Bearer ${isGroq ? groqKey : geminiKey}`, "Content-Type": "application/json" }
+        headers: (isGroq || isGemini || isCloudflare)
+          ? { Authorization: `Bearer ${isGroq ? groqKey : isGemini ? geminiKey : cfToken}`, "Content-Type": "application/json" }
           : { Authorization: `Bearer ${relaySecret}`, "Content-Type": "application/json" },
         body: JSON.stringify(isGroq ? {
           model: getEnv("GROQ_MODEL") ?? "openai/gpt-oss-120b",
@@ -355,6 +360,10 @@ export async function handleChat(request: Request): Promise<Response> {
           stream_options: { include_usage: true }, stream: true,
           temperature: 0.6, max_completion_tokens: MAX_OUTPUT_TOKENS,
           include_reasoning: false, reasoning_effort: "low",
+        } : isCloudflare ? {
+          messages: [{ role: "system", content: instructions }, ...context, latestMessage],
+          max_tokens: MAX_OUTPUT_TOKENS,
+          stream: false,
         } : isGemini ? {
           model: getEnv("GEMINI_MODEL") ?? "gemini-2.5-flash",
           messages: [{ role: "system", content: instructions }, ...context, latestMessage],
@@ -366,11 +375,21 @@ export async function handleChat(request: Request): Promise<Response> {
           })),
           model: "openai/gpt-6-astra",
         }),
-        signal: AbortSignal.timeout(isGroq ? 20000 : isGemini ? 25000 : 65000),
+        signal: AbortSignal.timeout(isGroq ? 20000 : isGemini || isCloudflare ? 25000 : 65000),
         cache: "no-store",
       });
       if (response.ok && response.body) {
-        upstream = response;
+        if (isCloudflare) {
+          // Workers AI REST returns a JSON envelope, unlike Groq/Gemini SSE.
+          const envelope = await response.json() as { success?: boolean; result?: { response?: string } };
+          const answer = envelope.result?.response;
+          if (!envelope.success || typeof answer !== "string" || !answer.trim()) {
+            upstreamError = 502;
+            continue;
+          }
+          const sse = `data: ${JSON.stringify({ choices: [{ delta: { content: answer.slice(0, 8000) } }] })}\n\ndata: [DONE]\n\n`;
+          upstream = new Response(sse, { headers: { "Content-Type": "text/event-stream" } });
+        } else upstream = response;
         selectedProvider = provider;
         break;
       }
