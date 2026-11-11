@@ -156,3 +156,32 @@ export async function reconcileGroqQuota(reservation: GroqReservation, actual: n
 export async function releaseGroqQuota(reservation: GroqReservation): Promise<void> {
   await redisEval(FINISH_SCRIPT,[...KEYS,PREFIX+"reservation:"+reservation.id],["0"]);
 }
+
+/**
+ * Independent distributed reservations for fallback providers.
+ * Fail closed when Redis is unavailable. Conservative limits are intentionally
+ * below provider free-tier ceilings; they are NOT a substitute for provider billing caps.
+ */
+export type FallbackProvider = "gemini" | "cloudflare";
+export type FallbackReservation = { provider: FallbackProvider; id: string; estimatedTokens: number };
+const FALLBACK_QUOTAS: Record<FallbackProvider, typeof QUOTAS> = {
+  gemini: { minuteRequests: 5, dayRequests: 100, minuteTokens: 6000, dayTokens: 100000, concurrent: 2 },
+  cloudflare: { minuteRequests: 5, dayRequests: 100, minuteTokens: 6000, dayTokens: 100000, concurrent: 2 },
+};
+function fallbackKeys(provider: FallbackProvider): { prefix: string; keys: string[] } {
+  const prefix = "wayapp:" + provider + ":v1:";
+  return { prefix, keys: [prefix+"req:min",prefix+"req:day",prefix+"tokens:min",prefix+"tokens:day",prefix+"leases",prefix+"lease-estimates"] };
+}
+export async function reserveFallbackQuota(provider: FallbackProvider, estimatedTokens: number): Promise<FallbackReservation | null> {
+  const q = FALLBACK_QUOTAS[provider];
+  if (!Number.isInteger(estimatedTokens) || estimatedTokens < 1 || estimatedTokens > q.minuteTokens) return null;
+  const id = crypto.randomUUID();
+  const { prefix, keys } = fallbackKeys(provider);
+  const result = await redisEval(RESERVE_SCRIPT, [...keys, prefix+"reservation:"+id],
+    [String(estimatedTokens), String(q.minuteRequests), String(q.dayRequests), String(q.minuteTokens), String(q.dayTokens), String(q.concurrent)]);
+  return result === 0 ? { provider, id, estimatedTokens } : null;
+}
+export async function settleFallbackQuota(reservation: FallbackReservation, actualTokens: number): Promise<void> {
+  const { prefix, keys } = fallbackKeys(reservation.provider);
+  await redisEval(FINISH_SCRIPT, [...keys, prefix+"reservation:"+reservation.id], [String(Math.max(0, Math.ceil(actualTokens)))]);
+}
