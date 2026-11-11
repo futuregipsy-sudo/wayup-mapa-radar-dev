@@ -328,21 +328,26 @@ export async function handleChat(request: Request): Promise<Response> {
   const relayUrl = getEnv("WAYAPP_LOVABLE_RELAY_URL");
   const relaySecret = getEnv("WAYAPP_RELAY_SECRET");
   const fallbackEnabled = getEnv("WAYAPP_FALLBACK_ENABLED") === "true" && !!relayUrl && !!relaySecret;
+  const geminiKey = getEnv("GEMINI_API_KEY");
+  // Opt-in until the preview has passed integration tests. No paid fallback by default.
+  const geminiEnabled = getEnv("WAYAPP_GEMINI_ENABLED") === "true" && !!geminiKey;
   const primary = getEnv("WAYAPP_PRIMARY_PROVIDER") === "lovable" && fallbackEnabled ? "lovable" : "groq";
-  const providers: Array<"groq" | "lovable"> = primary === "lovable" ? ["lovable", "groq"] : ["groq", "lovable"];
+  const providers: Array<"groq" | "gemini" | "lovable"> = primary === "lovable" ? ["lovable", "groq", "gemini"] : ["groq", "gemini", "lovable"];
   let upstream: Response | undefined;
-  let selectedProvider: "groq" | "lovable" = primary;
+  let selectedProvider: "groq" | "gemini" | "lovable" = primary;
   let groqReserved = true;
   let upstreamError = 502;
   for (const provider of providers) {
     if (provider === "lovable" && !fallbackEnabled) continue;
+    if (provider === "gemini" && !geminiEnabled) continue;
     if (provider === "groq" && !groqKey) continue;
     try {
       const isGroq = provider === "groq";
-      const response = await fetch(isGroq ? "https://api.groq.com/openai/v1/chat/completions" : relayUrl!, {
+      const isGemini = provider === "gemini";
+      const response = await fetch(isGroq ? "https://api.groq.com/openai/v1/chat/completions" : isGemini ? "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions" : relayUrl!, {
         method: "POST",
-        headers: isGroq
-          ? { Authorization: `Bearer ${groqKey}`, "Content-Type": "application/json" }
+        headers: (isGroq || isGemini)
+          ? { Authorization: `Bearer ${isGroq ? groqKey : geminiKey}`, "Content-Type": "application/json" }
           : { Authorization: `Bearer ${relaySecret}`, "Content-Type": "application/json" },
         body: JSON.stringify(isGroq ? {
           model: getEnv("GROQ_MODEL") ?? "openai/gpt-oss-120b",
@@ -350,6 +355,10 @@ export async function handleChat(request: Request): Promise<Response> {
           stream_options: { include_usage: true }, stream: true,
           temperature: 0.6, max_completion_tokens: MAX_OUTPUT_TOKENS,
           include_reasoning: false, reasoning_effort: "low",
+        } : isGemini ? {
+          model: getEnv("GEMINI_MODEL") ?? "gemini-2.5-flash",
+          messages: [{ role: "system", content: instructions }, ...context, latestMessage],
+          stream: true, temperature: 0.6, max_tokens: MAX_OUTPUT_TOKENS,
         } : {
           instructions: instructions.slice(0, 24000),
           messages: [...history.slice(-29), latestMessage].map(m => ({
@@ -357,7 +366,7 @@ export async function handleChat(request: Request): Promise<Response> {
           })),
           model: "openai/gpt-6-astra",
         }),
-        signal: AbortSignal.timeout(isGroq ? 20000 : 65000),
+        signal: AbortSignal.timeout(isGroq ? 20000 : isGemini ? 25000 : 65000),
         cache: "no-store",
       });
       if (response.ok && response.body) {
@@ -377,7 +386,7 @@ export async function handleChat(request: Request): Promise<Response> {
     return json({ error: "Ahora mismo no puedo responder. Puedes solicitar una auditoría gratuita desde el formulario de contacto." }, upstreamError === 429 ? 429 : 502);
   }
   // If Lovable answers, Groq did not generate tokens. Release the Groq reservation.
-  if (selectedProvider === "lovable") {
+  if (selectedProvider !== "groq") {
     await releaseGroqQuota(reservation).catch(() => undefined);
     groqReserved = false;
   }
