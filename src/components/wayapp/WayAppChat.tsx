@@ -24,6 +24,9 @@ function asksAboutPricing(text: string): boolean {
 function renderAssistantText(text: string) {
   // Render only safe, limited Markdown. React escapes all text nodes.
   const clean = text
+    // Code fences (```lang … ```) are never shown as literal backticks: keep only the inner text.
+    .replace(/^[ \t]*```[^\n]*\n?/gm, "")
+    .replace(/`([^`\n]+)`/g, "$1")
     .replace(/^#{1,6}\s+/gm, "")
     .replace(/^\s*[-*]\s+/gm, "• ")
     .replace(/^\|(.+)\|\s*$/gm, (_line, cells: string) =>
@@ -42,6 +45,22 @@ function renderAssistantText(text: string) {
 }
 
 type StreamEvent = { type: string; content?: string; message?: string };
+
+type PageLocale = "es" | "en" | "fr" | "zh";
+
+/** The widget lives outside the page's LocaleProvider, so read the language from the URL prefix. */
+function pageLocale(): PageLocale {
+  if (typeof window === "undefined") return "es";
+  const prefix = window.location.pathname.split("/")[1];
+  return prefix === "en" || prefix === "fr" || prefix === "zh" ? prefix : "es";
+}
+
+const AI_NOTICE: Record<PageLocale, string> = {
+  es: "Asistente con IA: puede equivocarse. No compartas datos personales ni sensibles.",
+  en: "AI assistant: it can make mistakes. Don't share personal or sensitive data.",
+  fr: "Assistant IA : il peut se tromper. Ne partagez pas de données personnelles ou sensibles.",
+  zh: "AI 助手：可能会出错。请勿分享个人或敏感信息。",
+};
 
 const STARTERS = [
   "Quiero mejorar la presencia digital de mi negocio",
@@ -170,7 +189,7 @@ export function WayAppChat({ onClose, onExpand, expanded = false }: ChatProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "same-origin",
-        body: JSON.stringify({ messages: history, conversationId }),
+        body: JSON.stringify({ messages: history, conversationId, locale: pageLocale() }),
       });
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
@@ -472,6 +491,7 @@ export function WayAppChat({ onClose, onExpand, expanded = false }: ChatProps) {
           placeholder="Escribe tu pregunta…"
           aria-label="Escribe tu pregunta"
         />
+        <p className="wa-ai-notice" suppressHydrationWarning>{AI_NOTICE[pageLocale()]}</p>
         <div className="wa-composer-bottom">
           <span>Enter para enviar · Shift + Enter para nueva línea</span>
           <button type="submit" className="wa-send" disabled={!value.trim() || busy} aria-label="Enviar">
