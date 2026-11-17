@@ -3,12 +3,15 @@ import { hasCommercialIntent } from "./commercial-intent";
 import { extraAllowedOrigins, getEnv } from "./env";
 import { isLocalHost, json } from "./http";
 import { SYSTEM_PROMPT } from "./prompt";
-import { offTopicReply } from "./topic-guard";
+import { offTopicReply, type GuardLocale } from "./topic-guard";
 import { isNewConversationOverLimit, isOverLimit, reserveGroqQuotaDetailed, reconcileGroqQuota, releaseGroqQuota } from "./rate-limit";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
 const MAX_BODY_BYTES = 64 * 1024;
+const RETENTION_DAYS = 90;
+const VISITOR_COOKIE_MAX_AGE = RETENTION_DAYS * 86_400;
+const PAGE_LANGUAGE: Record<GuardLocale, string> = { es: "español", en: "inglés", fr: "francés", zh: "chino simplificado" };
 const MAX_MESSAGES = 30;
 const MAX_VISITOR_MESSAGES = 40;
 const MIN_MESSAGE_INTERVAL_MS = 1500;
@@ -150,6 +153,17 @@ export async function handleChat(request: Request): Promise<Response> {
 
   const messages = validateMessages(body);
   if (!messages) return json({ error: "El formato de la conversación no es válido." }, 400);
+  const requestedLocale = (body as { locale?: unknown }).locale;
+  const locale: GuardLocale =
+    typeof requestedLocale === "string" && Object.hasOwn(PAGE_LANGUAGE, requestedLocale) ? (requestedLocale as GuardLocale) : "es";
+
+  // GDPR data minimisation: chats older than the retention window are deleted. Runs on a
+  // small sample of requests so it costs nothing noticeable; failures never block the chat.
+  if (Math.random() < 0.02) {
+    await query(`DELETE FROM conversations WHERE updated_at < NOW() - INTERVAL '${RETENTION_DAYS} days'`).catch((error) =>
+      logDatabaseError("retention cleanup failed", error),
+    );
+  }
 
   const commercialIntent = hasCommercialIntent(messages.at(-1)?.content ?? "");
   let showAuditOffer = commercialIntent;
@@ -235,7 +249,7 @@ export async function handleChat(request: Request): Promise<Response> {
           "Content-Type": "application/x-ndjson; charset=utf-8",
           "Cache-Control": "no-store, no-transform",
           "X-WayApp-Conversation-Id": conversationId,
-          "Set-Cookie": `wayapp_visitor=${visitorToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000` + (secure ? "; Secure" : ""),
+          "Set-Cookie": `wayapp_visitor=${visitorToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${VISITOR_COOKIE_MAX_AGE}` + (secure ? "; Secure" : ""),
         },
       });
     }
@@ -252,7 +266,7 @@ export async function handleChat(request: Request): Promise<Response> {
 
   // Unambiguous off-topic requests are answered locally: no provider tokens, no generic advice.
   // Persist both turns so the same conversation remains auditable and coherent.
-  const scopedReply = offTopicReply(messages.at(-1)!.content);
+  const scopedReply = offTopicReply(messages.at(-1)!.content, locale);
   if (scopedReply) {
     try {
       await query(
@@ -272,7 +286,7 @@ export async function handleChat(request: Request): Promise<Response> {
         "Cache-Control": "no-store, no-transform",
         "X-Content-Type-Options": "nosniff",
         "X-WayApp-Conversation-Id": conversationId,
-        "Set-Cookie": `wayapp_visitor=${visitorToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000` + (secure ? "; Secure" : ""),
+        "Set-Cookie": `wayapp_visitor=${visitorToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${VISITOR_COOKIE_MAX_AGE}` + (secure ? "; Secure" : ""),
       },
     });
   }
@@ -283,7 +297,8 @@ export async function handleChat(request: Request): Promise<Response> {
   const brief = visitorBrief(history,latestMessage);
   const memoryMessage: ChatMessage[] = brief ? [{role:"system" as "user",content:"Resumen determinista de datos mencionados (no asumir hechos adicionales):\n"+brief}] : [];
   // The brief is an instruction-side note, not an additional visitor turn.
-  const instructions = brief ? SYSTEM_PROMPT + "\n\nFICHA DE CONTEXTO (solo datos mencionados):\n" + brief : SYSTEM_PROMPT;
+  const basePrompt = SYSTEM_PROMPT + "\n\nIDIOMA DE LA PÁGINA: " + PAGE_LANGUAGE[locale] + ".";
+  const instructions = brief ? basePrompt + "\n\nFICHA DE CONTEXTO (solo datos mencionados):\n" + brief : basePrompt;
   const estimateRequest = () => estimateTokens(instructions) +
     estimateTokens(latestMessage.content) +
     context.reduce((sum, item) => sum + estimateTokens(item.content) + 8, 0) +
@@ -467,7 +482,7 @@ export async function handleChat(request: Request): Promise<Response> {
       "X-Accel-Buffering": "no",
       "X-WayApp-Conversation-Id": conversationId,
       "Set-Cookie":
-        `wayapp_visitor=${visitorToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000` +
+        `wayapp_visitor=${visitorToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${VISITOR_COOKIE_MAX_AGE}` +
         (secure ? "; Secure" : ""),
     },
   });
